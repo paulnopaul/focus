@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<!--
+  Custom LeechBlock NG delaying page: the countdown starts only after you press the button.
+
+  How it works: LeechBlock injects its script (blocked.js) into any http(s) page whose path
+  contains "lb-custom". That script starts the countdown only if an element with
+  id="lbDelaySeconds" exists when it runs. On first load that element is missing, so nothing
+  happens until you press the button. The button reloads the page with a flag; on reload this
+  page adds the countdown element before LeechBlock's script runs, so the countdown starts.
+
+  Use it in LeechBlock as:  https://YOUR-HOST/.../lb-custom/delayed.html?$S&$U
+-->
+<html id="lbDelayingPage" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Pause</title>
+	<style>
+		:root {
+			--bg: #f6f5f2;
+			--card: #ffffff;
+			--text: #1f1f1d;
+			--muted: #6b6a66;
+			--line: #e3e1db;
+			--accent: #2f5d50;
+			--accent-text: #ffffff;
+			--warn: #9a4b2b;
+		}
+		@media (prefers-color-scheme: dark) {
+			:root {
+				--bg: #161716;
+				--card: #1f201f;
+				--text: #ecebe7;
+				--muted: #9c9b96;
+				--line: #333431;
+				--accent: #8fc1ad;
+				--accent-text: #10201a;
+				--warn: #e39a78;
+			}
+		}
+		* { box-sizing: border-box; }
+		html, body { margin: 0; height: 100%; }
+		body {
+			background: var(--bg);
+			color: var(--text);
+			font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 16px;
+		}
+		main {
+			width: 100%;
+			max-width: 460px;
+			background: var(--card);
+			border: 1px solid var(--line);
+			border-radius: 16px;
+			padding: 32px 28px;
+			text-align: center;
+		}
+		h1 { font-size: 22px; font-weight: 600; margin: 0 0 8px; }
+		p { margin: 0 0 16px; color: var(--muted); }
+		.site {
+			display: inline-block;
+			max-width: 100%;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			font-size: 14px;
+			color: var(--text);
+			background: var(--bg);
+			border: 1px solid var(--line);
+			border-radius: 8px;
+			padding: 4px 10px;
+			margin-bottom: 20px;
+		}
+		.site a { color: inherit; text-decoration: none; pointer-events: none; }
+		blockquote {
+			margin: 0 0 20px;
+			padding: 12px 14px;
+			border-left: 3px solid var(--accent);
+			background: var(--bg);
+			border-radius: 6px;
+			text-align: left;
+			color: var(--text);
+		}
+		button, .open {
+			display: inline-block;
+			font: inherit;
+			font-weight: 600;
+			border: 0;
+			border-radius: 10px;
+			padding: 12px 20px;
+			cursor: pointer;
+			background: var(--accent);
+			color: var(--accent-text);
+			text-decoration: none;
+		}
+		button:focus-visible, .open:focus-visible { outline: 3px solid var(--line); outline-offset: 2px; }
+		.count { font-size: 56px; font-weight: 700; line-height: 1; margin: 8px 0 12px; color: var(--text); }
+		.hint { font-size: 13px; }
+		.warn { color: var(--warn); }
+		[hidden] { display: none !important; }
+	</style>
+	<!-- LeechBlock fills this with your "custom style" option, if you set one -->
+	<style id="customStyle"></style>
+</head>
+<body>
+	<main>
+		<h1>Pause for a moment</h1>
+		<div class="site">
+			<a id="lbBlockedURLLink" target="_self"><span id="lbBlockedURL">this site</span></a>
+			· <span id="lbBlockedSet">Block Set</span>
+		</div>
+
+		<!-- Your custom message from LeechBlock options (optional) -->
+		<div id="lbCustomMsgDiv" style="display: none;">
+			<blockquote id="lbCustomMsg"></blockquote>
+		</div>
+
+		<!-- Step 1: nothing is counting until you choose to start -->
+		<section id="startStep">
+			<p>Do you really need this right now? If yes, start the wait.</p>
+			<button id="startBtn" type="button">Start the wait</button>
+			<p class="hint" style="margin-top:16px">Otherwise, just close this tab (⌘W).</p>
+		</section>
+
+		<!-- Step 2: countdown (the lbDelaySeconds element is added only after you press Start) -->
+		<section id="countStep" hidden>
+			<div id="lbCountdownText">
+				<div class="count" id="countSlot"></div>
+				<p>Stay on this tab. Breathe out slowly.</p>
+			</div>
+			<p id="cancelledMsg" class="warn" hidden>The countdown stopped because you left this tab.</p>
+			<button id="restartBtn" type="button" hidden>Start again</button>
+		</section>
+
+		<!-- Step 3: shown when the countdown reaches zero -->
+		<section id="doneStep" hidden>
+			<p>Time's up. You can open the page now.</p>
+			<a id="openLink" class="open" target="_self" href="#">Open page</a>
+		</section>
+	</main>
+
+	<script>
+		(function () {
+			var FLAG = "lbStartCountdown";
+			var startStep = document.getElementById("startStep");
+			var countStep = document.getElementById("countStep");
+			var doneStep = document.getElementById("doneStep");
+
+			function startCountdown() {
+				try { sessionStorage.setItem(FLAG, "1"); } catch (e) {}
+				location.reload();
+			}
+
+			document.getElementById("startBtn").addEventListener("click", startCountdown);
+			document.getElementById("restartBtn").addEventListener("click", startCountdown);
+
+			var started = false;
+			try {
+				started = sessionStorage.getItem(FLAG) === "1";
+				sessionStorage.removeItem(FLAG);
+			} catch (e) {}
+
+			if (!started) return; // No countdown element, so LeechBlock won't start counting.
+
+			// Add the element LeechBlock looks for. Its script runs after this one,
+			// finds the element and starts the countdown.
+			var secs = document.createElement("span");
+			secs.id = "lbDelaySeconds";
+			secs.textContent = "…";
+			document.getElementById("countSlot").appendChild(secs);
+			startStep.hidden = true;
+			countStep.hidden = false;
+
+			// Countdown finished: LeechBlock writes 0 here.
+			new MutationObserver(function () {
+				if (secs.textContent.trim() === "0") {
+					var link = document.getElementById("lbBlockedURLLink");
+					var href = link && link.getAttribute("href");
+					var openLink = document.getElementById("openLink");
+					if (href) { openLink.href = href; } else { openLink.hidden = true; }
+					countStep.hidden = true;
+					doneStep.hidden = false;
+				}
+			}).observe(secs, { childList: true, characterData: true, subtree: true });
+
+			// Countdown cancelled because the tab lost focus: LeechBlock strikes the text through.
+			var countdownText = document.getElementById("lbCountdownText");
+			new MutationObserver(function () {
+				if (countdownText.style.textDecoration.indexOf("line-through") !== -1) {
+					countdownText.hidden = true;
+					document.getElementById("cancelledMsg").hidden = false;
+					document.getElementById("restartBtn").hidden = false;
+				}
+			}).observe(countdownText, { attributes: true, attributeFilter: ["style"] });
+		})();
+	</script>
+</body>
+</html>
